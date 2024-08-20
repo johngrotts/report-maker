@@ -1,8 +1,10 @@
 import { Injectable } from '@angular/core';
 import * as ExcelJS from 'exceljs';
-import { ExcelConditionalFormats, ExcelContentFormatter, ExcelFootFormatter, ExcelHeadFormatter, ExcelIndividualFormulaCell, ExcelSheetFormatter } from '../models/excel-formatter';
+import { ExcelConditionalFormats, ExcelContentFormatter, ExcelFootFormatter, ExcelFormatter, ExcelHeadFormatter, ExcelIndividualFormulaCell, ExcelSheetFormatter, ExcelWorksheetFormatter } from '../models/excel-formatter';
 import { ValidationUtilsService } from '../../../common/utils/validation-utils.service';
 import { KeyValue } from '@angular/common';
+import { DownloadObject } from '../../../common/models/download-object';
+import { FileDownloadService } from '../../../common/services/file-download.service';
 
 @Injectable({
   providedIn: 'root'
@@ -12,6 +14,37 @@ export class ExcelReportMakerService {
   protected static dataFirstRow: number;
   protected static dataLastRow: number = 1;
   protected static emptyRowsBetweenTableAndFoot: number = 0;
+
+  public static generateExcelFromDataAndFormatter(data: any, formatter: ExcelFormatter): void {
+    let workbook = new ExcelJS.Workbook();
+    formatter.sheetFormatters.forEach((s: ExcelWorksheetFormatter, index: number) => {
+      workbook.addWorksheet(s.sheetName ?? `Sheet ${index}`);
+      if(s.sheetFormatter) {
+        this.setSheetProperties(workbook, index, data, s.sheetFormatter);
+      }
+      if(s.headFormatter) {
+        this.generateSheetHead(workbook, index, data, s.headFormatter);
+      }
+      if(s.contentFormatter) {
+        this.generateContent(workbook, index, data, s.contentFormatter);
+      }
+      if(s.footFormatter) {
+        this.generateSheetFoot(workbook, index, data, s.footFormatter);
+      }
+      if(s.individualFormulaCells) {
+        this.generateIndividualFormulaCells(workbook, index, data, s.individualFormulaCells);
+      }
+      if(s.conditionalFormats) {
+        this.generateConditionalFormatting(workbook, index, s.conditionalFormats);
+      }
+    });
+
+    workbook.xlsx.writeBuffer().then(buffer => {
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheet.sheet' });
+      const excelFile: DownloadObject = {file: blob, filename: `${formatter.fileName}.xlsx` };
+      FileDownloadService.downloadFile(excelFile);
+    });
+  }
   
 
   protected static setSheetProperties(workbook: ExcelJS.Workbook, sheetNumber: number, 
