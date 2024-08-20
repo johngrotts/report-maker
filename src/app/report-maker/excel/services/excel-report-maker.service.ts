@@ -1,6 +1,8 @@
 import { Injectable } from '@angular/core';
 import * as ExcelJS from 'exceljs';
-import { ExcelConditionalFormats, ExcelContentFormatter, ExcelFootFormatter, ExcelFormatter, ExcelHeadFormatter, ExcelIndividualFormulaCell, ExcelSheetFormatter, ExcelWorksheetFormatter } from '../models/excel-formatter';
+import { ExcelConditionalFormats, ExcelContentFormatter, ExcelFootFormatter, 
+  ExcelFormatter, ExcelHeadFormatter, ExcelIndividualFormulaCell, 
+  ExcelSheetFormatter, ExcelWorksheetFormatter } from '../models/excel-formatter';
 import { ValidationUtilsService } from '../../../common/utils/validation-utils.service';
 import { KeyValue } from '@angular/common';
 import { DownloadObject } from '../../../common/models/download-object';
