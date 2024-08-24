@@ -1,7 +1,7 @@
 export class ExcelCellContent {
     public cellData: any;
     public cellColumn: string;
-    public cellRow: string;
+    public cellRow: number;
     public dataVarReference?: string;
     public mergeCells?: ExcelMergeCells;
     public styles?: any;
