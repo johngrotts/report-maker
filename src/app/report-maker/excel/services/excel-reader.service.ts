@@ -84,8 +84,8 @@ export class ExcelReaderService {
             cellMerges.push({ cell: m, col: col, row: row, model: merges[m].model });
           });
           cellMerges.sort((a, b) => {
-            const cellA = `${a.col}${TextUtilService.pad3(a.row)}`;
-            const cellB = `${b.col}${TextUtilService.pad3(b.row)}`;
+            const cellA = `${a.col}${TextUtilService.customPad(a.row, 4)}`;
+            const cellB = `${b.col}${TextUtilService.customPad(b.row, 4)}`;
             if(cellA < cellB) {
               return -1;
             }
@@ -122,7 +122,7 @@ export class ExcelReaderService {
           const individualFormulaCells: any[] = [];
   
           // Sheet Head Data
-          sp.headFormatter = this.createSheetHeadData(trp, so, cellMerges);
+          sp.headFormatter = this.createSheetHeadFormatter(trp, so, cellMerges);
   
           // Table Headers and Data
           const cf = new ExcelContentFormatter();
@@ -152,75 +152,11 @@ export class ExcelReaderService {
           }
   
           // Sheet Foot
-          const ff = new ExcelFootFormatter();
-          ff.emptyRowsAboveThisSection = trp.sheetFootStartRow - trp.tableDataStartRow - 1;
-          if(trp.footRange > 0) {
-            ff.cellContents = [];
-            for(let i = trp.sheetFootStartRow; i <= trp.sheetFootStartRow + trp.footRange; i++) {
-              so.getRow(i)['_cells'].forEach((c: any) => {
-                const cell = new ExcelCellContent();
-                let cellVal = c._value.model.value;
-  
-                if(ValidationUtilsService.doesExist(cellVal)) {
-                  let varRef = cellVal as string;
-                  const varStart = varRef.search( /(?<!\\)(\${)/ );
-                  if(varStart >= 0) {
-                    const varEnd = varRef.substring(varStart).search( /}/ ) + varStart;
-                    varRef = varRef.substring(varStart + 2, varEnd);
-                    cell.dataVarReference = varRef;
-                    cellVal = `${cellVal.substring(0, varStart)}%v${cellVal.substring(varEnd + 1)}`;
-                  }
-                }
-                if(ValidationUtilsService.doesExist(cellVal) || ValidationUtilsService.doesExist(c._value.model.style) ) {
-                  if(ValidationUtilsService.doesExist(c._value.model.formula)) {
-                    individualFormulaCells.push(c);
-                  } else {
-                    cell.cellData = cellVal;
-                    cell.cellType = c._value.model.type;
-                    cell.styles = c._value.model.style;
-                    cell.cellColumn = c._value.model.address.replace(/[^a-z]/gi, '');
-                    cell.cellRow = c._value.model.address.replace(/\D/g, '');
-                    const mCell = cellMerges.find(m => m.cell === `${cell.cellColumn}${cell.cellRow}`);
-                    if(ValidationUtilsService.doesExist(mCell)) {
-                      cell.mergeCells = this.createMerge(mCell);
-                    }
-                    ff.cellContents.push(cell);
-                  }
-                }
-              });
-            }
-            sp.footFormatter = ff;
-          }
+          sp.footFormatter = this.createSheetFootFormatter(trp, so, cellMerges);
   
           // Individual Formulas
-          const ifc = new ExcelIndividualFormulaCell();
-          if(ValidationUtilsService.doesArrayHaveData(individualFormulaCells)) {
-            ifc.cellContents = [];
-            individualFormulaCells.forEach(f => {
-              const c = f._value.model;
-              let col = c.address.replace(/[^a-z]/gi, '');
-              let row = c.address.replace(/\D/g, '');
-              const formulaCell = new ExcelCellContent();
-              let formula = c.formula;
-              const rangeRegEx = /(\$?[A-Z]+\$?\d+):(\$?[A-Z]+\$?\d+)/;
-              const numRegEx = /\d+/;
-              let regResult = rangeRegEx.exec(formula);
-              while(regResult !== null) {
-                const range = regResult[0].split(':');
-                range[0] = range[0].replace(numRegEx, '\${datafirstRow}');
-                range[1] = range[1].replace(numRegEx, '\${dataLastRow}');
-                formula = formula.substring(0, regResult.index) + range[0] + ':' + range[1] + formula.substring(regResult.index + regResult[0].length);
-                regResult = rangeRegEx.exec(formula);
-              }
-              formulaCell.cellData = `=${formula}`;
-              formulaCell.cellColumn = col;
-              formulaCell.cellRow = row;
-              formulaCell.styles = c.style;
-              formulaCell.cellType = c.type;
-              ifc.cellContents.push(formulaCell);
-            });
-          }
-          sp.individualFormulaCells = ifc;
+          console.log('IFC: ', this.individualFormulaCells)
+          sp.individualFormulaCells = this.createIndividualFormulaCells();
   
           // Conditional Formatting
           sp.conditionalFormats = so['conditionalFormattings'];
@@ -319,7 +255,7 @@ export class ExcelReaderService {
     return emc;
   }
 
-  protected static createSheetHeadData(trp: ExcelRangeTemplateReaderProperties,
+  protected static createSheetHeadFormatter(trp: ExcelRangeTemplateReaderProperties,
     so: any, cellMerges: ExcelTemplateReaderCellMerge[] ): ExcelHeadFormatter {
     // Sheet Head Data
     const hf = new ExcelHeadFormatter();
@@ -341,7 +277,10 @@ export class ExcelReaderService {
               cellVal = `${cellVal.substring(0, varStart)}%v${cellVal.substring(varEnd + 1)}`;
             }
           }
-          if(ValidationUtilsService.doesExist(cellVal) || ValidationUtilsService.doesExist(c._value.model.style) ) {
+          if(ValidationUtilsService.doesExist(cellVal) || 
+            ValidationUtilsService.doesExist(c._value.model.style) ||
+            ValidationUtilsService.doesExist(c._value.model.formula) ) {
+              
             if(ValidationUtilsService.doesExist(c._value.model.formula)) {
               this.individualFormulaCells.push(c);
             } else {
@@ -361,5 +300,82 @@ export class ExcelReaderService {
       }
     }
     return hf;
+  }
+
+  private static createSheetFootFormatter(trp: ExcelRangeTemplateReaderProperties,
+    so: any, cellMerges: ExcelTemplateReaderCellMerge[]): ExcelFootFormatter {
+    const ff = new ExcelFootFormatter();
+    ff.emptyRowsAboveThisSection = trp.sheetFootStartRow! - trp.tableDataStartRow! - 1;
+    if(trp.footRange! > 0) {
+      ff.cellContents = [];
+      for(let i = trp.sheetFootStartRow!; i <= trp.sheetFootStartRow! + trp.footRange!; i++) {
+        so.getRow(i)['_cells'].forEach((c: any) => {
+          const cell = new ExcelCellContent();
+          let cellVal = c._value.model.value;
+
+          if(ValidationUtilsService.doesExist(cellVal)) {
+            let varRef = cellVal as string;
+            const varStart = varRef.search( /(?<!\\)(\${)/ );
+            if(varStart >= 0) {
+              const varEnd = varRef.substring(varStart).search( /}/ ) + varStart;
+              varRef = varRef.substring(varStart + 2, varEnd);
+              cell.dataVarReference = varRef;
+              cellVal = `${cellVal.substring(0, varStart)}%v${cellVal.substring(varEnd + 1)}`;
+            }
+          }
+          if(ValidationUtilsService.doesExist(cellVal) || 
+            ValidationUtilsService.doesExist(c._value.model.style) ||
+            ValidationUtilsService.doesExist(c._value.model.formula) ) {
+            
+            if(ValidationUtilsService.doesExist(c._value.model.formula)) {
+              this.individualFormulaCells.push(c);
+            } else {
+              cell.cellData = cellVal;
+              cell.cellType = c._value.model.type;
+              cell.styles = c._value.model.style;
+              cell.cellColumn = c._value.model.address.replace(/[^a-z]/gi, '');
+              cell.cellRow = c._value.model.address.replace(/\D/g, '');
+              const mCell = cellMerges.find(m => m.cell === `${cell.cellColumn}${cell.cellRow}`);
+              if(ValidationUtilsService.doesExist(mCell)) {
+                cell.mergeCells = this.createMerge(mCell);
+              }
+              ff.cellContents.push(cell);
+            }
+          }
+        });
+      }
+    }
+    return ff;
+  }
+
+  private static createIndividualFormulaCells(): ExcelIndividualFormulaCell {
+    const ifc = new ExcelIndividualFormulaCell();
+    if(ValidationUtilsService.doesArrayHaveData(this.individualFormulaCells)) {
+      ifc.cellContents = [];
+      this.individualFormulaCells.forEach(f => {
+        const c = f._value.model;
+        let col = c.address.replace(/[^a-z]/gi, '');
+        let row = c.address.replace(/\D/g, '');
+        const formulaCell = new ExcelCellContent();
+        let formula = c.formula;
+        const rangeRegEx = /(\$?[A-Z]+\$?\d+):(\$?[A-Z]+\$?\d+)/;
+        const numRegEx = /\d+/;
+        let regResult = rangeRegEx.exec(formula);
+        while(regResult !== null) {
+          const range = regResult[0].split(':');
+          range[0] = range[0].replace(numRegEx, '\${datafirstRow}');
+          range[1] = range[1].replace(numRegEx, '\${dataLastRow}');
+          formula = formula.substring(0, regResult.index) + range[0] + ':' + range[1] + formula.substring(regResult.index + regResult[0].length);
+          regResult = rangeRegEx.exec(formula);
+        }
+        formulaCell.cellData = `=${formula}`;
+        formulaCell.cellColumn = col;
+        formulaCell.cellRow = row;
+        formulaCell.styles = c.style;
+        formulaCell.cellType = c.type;
+        ifc.cellContents.push(formulaCell);
+      });
+    }
+    return ifc;
   }
 }
