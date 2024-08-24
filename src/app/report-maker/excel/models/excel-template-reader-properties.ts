@@ -1,6 +1,6 @@
 export class ExcelTemplateReaderProperties {
     public sheetHeadStartRow?: number;
-    public sheetHeadEndRow: number;
+    public sheetHeadEndRow?: number;
     public tableHeaderStartRow?: number;
     public tableHeaderEndRow?: number;
     public tableDataStartRow?: number;
@@ -13,4 +13,10 @@ export class ExcelTemplateReaderCellMerge {
     public col: string;
     public row: number;
     public model: any;
+}
+
+export class ExcelRangeTemplateReaderProperties extends ExcelTemplateReaderProperties {
+    public headRange?: number;
+    public tableHeadRange?: number;
+    public footRange?: number;
 }

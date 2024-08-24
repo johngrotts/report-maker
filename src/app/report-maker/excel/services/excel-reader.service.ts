@@ -1,15 +1,18 @@
 import { Injectable } from '@angular/core';
 import * as ExcelJS from 'exceljs';
-import { ExcelTemplateReaderCellMerge, ExcelTemplateReaderProperties } from '../models/excel-template-reader-properties';
+import { ExcelRangeTemplateReaderProperties, ExcelTemplateReaderCellMerge, ExcelTemplateReaderProperties } from '../models/excel-template-reader-properties';
 import { ExcelCellContent, ExcelMergeCells } from '../models/excel-data-content';
 import { TextUtilService } from '../../../common/utils/text-util.service';
 import { ExcelColumnProperty, ExcelContentFormatter, ExcelFootFormatter, ExcelFormatter, ExcelHeadFormatter, ExcelIndividualFormulaCell, ExcelSheetFormatter, ExcelTableHeaderDataFormatter, ExcelWorksheetFormatter } from '../models/excel-formatter';
 import { ValidationUtilsService } from '../../../common/utils/validation-utils.service';
 
+
 @Injectable({
   providedIn: 'root'
 })
 export class ExcelReaderService {
+
+  private static individualFormulaCells: any[] = [];
 
   public static async readXLSXFromFilePath(
     filePath: string, templateProperties?: ExcelTemplateReaderProperties): Promise<ExcelFormatter> {
@@ -91,75 +94,49 @@ export class ExcelReaderService {
             }
             return 0;
           });
-  
-  
+
           // Initial Setup
-          const headStart = templateProperties.sheetHeadStartRow ? templateProperties.sheetHeadStartRow : 1;
-          const headEnd = templateProperties.sheetHeadEndRow ? templateProperties.sheetHeadEndRow : 1;
-          const headRange = headEnd - headStart + 1;
-          const tableHeaderStart = templateProperties.tableHeaderStartRow ? templateProperties.tableHeaderStartRow : 1;
-          const tableHeaderEnd = templateProperties.tableHeaderEndRow ? templateProperties.tableHeaderEndRow : 1;
-          const tableHeaderRange = tableHeaderEnd - tableHeaderStart + 1;
-          const tableDataStartRow = templateProperties.tableDataStartRow ? templateProperties.tableDataStartRow : 1;
-          const footStart = templateProperties.sheetFootStartRow ? templateProperties.sheetFootStartRow : 1;
-          const footEnd = templateProperties.sheetFootEndRow ? templateProperties.sheetFootEndRow : 1;
-          const footRange = footEnd - footStart + 1;
+          const trp: ExcelRangeTemplateReaderProperties = templateProperties;
+          if(trp.sheetHeadStartRow && trp.sheetHeadEndRow) {
+            trp.headRange = trp.sheetHeadEndRow - trp.sheetHeadStartRow + 1;
+          } else {
+            trp.headRange = 0;
+            trp.sheetHeadStartRow = trp.sheetHeadStartRow ? trp.sheetHeadStartRow : 0;
+            trp.sheetHeadEndRow = trp.sheetHeadEndRow ? trp.sheetHeadEndRow : 0;
+          }
+          if(trp.tableHeaderStartRow && trp.tableHeaderEndRow) {
+            trp.tableHeadRange = trp.tableHeaderEndRow - trp.tableHeaderStartRow + 1;
+          } else {
+            trp.tableHeadRange = 0;
+            trp.tableHeaderStartRow = trp.tableHeaderStartRow ? trp.tableHeaderStartRow : 0;
+            trp.tableHeaderEndRow = trp.tableHeaderEndRow ? trp.tableHeaderEndRow : 0;
+          }
+          trp.tableDataStartRow = trp.tableDataStartRow ? trp.tableDataStartRow : 0;
+          if(trp.sheetFootStartRow && trp.sheetFootEndRow) {
+            trp.footRange = trp.sheetFootEndRow - trp.sheetFootStartRow + 1;
+          } else {
+            trp.footRange = 0;
+            trp.sheetFootStartRow = trp.sheetFootStartRow ? trp.sheetFootStartRow : 0;
+            trp.sheetFootEndRow = trp.sheetFootEndRow ? trp.sheetFootEndRow : 0;
+          }
           const individualFormulaCells: any[] = [];
   
           // Sheet Head Data
-          const hf = new ExcelHeadFormatter();
-          hf.emptyRowsBelowThisSection = tableHeaderStart - headEnd - 1;
-          if(headRange > 0) {
-            hf.cellContents = [];
-            for(let i = 1; i <= headRange; i++) {
-              so.getRow(i)['_cells'].forEach((c: any) => {
-                const cell = new ExcelCellContent();
-                let cellVal = c._value.model.value;
-  
-                if(ValidationUtilsService.doesExist(cellVal)) {
-                  let varRef = cellVal as string;
-                  const varStart = varRef.search( /(?<!\\)(\${)/ );
-                  if(varStart >= 0) {
-                    const varEnd = varRef.substring(varStart).search( /}/ ) + varStart;
-                    varRef = varRef.substring(varStart + 2, varEnd);
-                    cell.dataVarReference = varRef;
-                    cellVal = `${cellVal.substring(0, varStart)}%v${cellVal.substring(varEnd + 1)}`;
-                  }
-                }
-                if(ValidationUtilsService.doesExist(cellVal) || ValidationUtilsService.doesExist(c._value.model.style) ) {
-                  if(ValidationUtilsService.doesExist(c._value.model.formula)) {
-                    individualFormulaCells.push(c);
-                  } else {
-                    cell.cellData = cellVal;
-                    cell.cellType = c._value.model.type;
-                    cell.styles = c._value.model.style;
-                    cell.cellColumn = c._value.model.address.replace(/[^a-z]/gi, '');
-                    cell.cellRow = c._value.model.address.replace(/\D/g, '');
-                    const mCell = cellMerges.find(m => m.cell === `${cell.cellColumn}${cell.cellRow}`);
-                    if(ValidationUtilsService.doesExist(mCell)) {
-                      cell.mergeCells = this.createMerge(mCell);
-                    }
-                    hf.cellContents.push(cell);
-                  }
-                }
-              });
-            }
-            sp.headFormatter = hf;
-          }
+          sp.headFormatter = this.createSheetHeadData(trp, so, cellMerges);
   
           // Table Headers and Data
           const cf = new ExcelContentFormatter();
           const had: ExcelTableHeaderDataFormatter[] = [];
-          if(tableHeaderRange > 0 && tableDataStartRow > 0) {
-            cf.headerStartingRow = tableHeaderStart;
-            cf.dataStartingRow = tableDataStartRow;
-            for(let i = tableHeaderStart; i <= tableHeaderEnd; i++) {
+          if(trp.tableHeadRange > 0 && trp.tableDataStartRow > 0) {
+            cf.headerStartingRow = trp.tableHeaderStartRow;
+            cf.dataStartingRow = trp.tableDataStartRow;
+            for(let i = trp.tableHeaderStartRow; i <= trp.tableHeaderEndRow; i++) {
               so.getRow(i)._cells.forEach((c: any) => {
                 const thd = new ExcelTableHeaderDataFormatter();
                 thd.headerTitle = c._value.model.value;
                 thd.headerStyles = c._value.model.style;
                 thd.column = c._value.model.address.replace(/[^a-z]/gi, '');
-                const dc = so.getCell(`${thd.column}${tableDataStartRow}`);
+                const dc = so.getCell(`${thd.column}${trp.tableDataStartRow}`);
                 if(dc._value.model.value) {
                   thd.dataKey = dc._value.model.value;
                 } else if(ValidationUtilsService.doesExist(dc._value.model.formula)) {
@@ -176,10 +153,10 @@ export class ExcelReaderService {
   
           // Sheet Foot
           const ff = new ExcelFootFormatter();
-          ff.emptyRowsAboveThisSection = footStart - tableDataStartRow - 1;
-          if(footRange > 0) {
+          ff.emptyRowsAboveThisSection = trp.sheetFootStartRow - trp.tableDataStartRow - 1;
+          if(trp.footRange > 0) {
             ff.cellContents = [];
-            for(let i = footStart; i <= footStart + footRange; i++) {
+            for(let i = trp.sheetFootStartRow; i <= trp.sheetFootStartRow + trp.footRange; i++) {
               so.getRow(i)['_cells'].forEach((c: any) => {
                 const cell = new ExcelCellContent();
                 let cellVal = c._value.model.value;
@@ -340,5 +317,49 @@ export class ExcelReaderService {
     emc.firstColumn = TextUtilService.convertNumberToAlpha(mergeCell.model.left);
     emc.lastColumn = TextUtilService.convertNumberToAlpha(mergeCell.model.right);
     return emc;
+  }
+
+  protected static createSheetHeadData(trp: ExcelRangeTemplateReaderProperties,
+    so: any, cellMerges: ExcelTemplateReaderCellMerge[] ): ExcelHeadFormatter {
+    // Sheet Head Data
+    const hf = new ExcelHeadFormatter();
+    hf.emptyRowsBelowThisSection = trp.tableHeaderStartRow! - trp.sheetHeadEndRow! - 1;
+    if(trp.headRange! > 0) {
+      hf.cellContents = [];
+      for(let i = 1; i <= trp.headRange!; i++) {
+        so.getRow(i)['_cells'].forEach((c: any) => {
+          const cell = new ExcelCellContent();
+          let cellVal = c._value.model.value;
+
+          if(ValidationUtilsService.doesExist(cellVal)) {
+            let varRef = cellVal as string;
+            const varStart = varRef.search( /(?<!\\)(\${)/ );
+            if(varStart >= 0) {
+              const varEnd = varRef.substring(varStart).search( /}/ ) + varStart;
+              varRef = varRef.substring(varStart + 2, varEnd);
+              cell.dataVarReference = varRef;
+              cellVal = `${cellVal.substring(0, varStart)}%v${cellVal.substring(varEnd + 1)}`;
+            }
+          }
+          if(ValidationUtilsService.doesExist(cellVal) || ValidationUtilsService.doesExist(c._value.model.style) ) {
+            if(ValidationUtilsService.doesExist(c._value.model.formula)) {
+              this.individualFormulaCells.push(c);
+            } else {
+              cell.cellData = cellVal;
+              cell.cellType = c._value.model.type;
+              cell.styles = c._value.model.style;
+              cell.cellColumn = c._value.model.address.replace(/[^a-z]/gi, '');
+              cell.cellRow = c._value.model.address.replace(/\D/g, '');
+              const mCell = cellMerges.find(m => m.cell === `${cell.cellColumn}${cell.cellRow}`);
+              if(ValidationUtilsService.doesExist(mCell)) {
+                cell.mergeCells = this.createMerge(mCell);
+              }
+              hf.cellContents.push(cell);
+            }
+          }
+        });
+      }
+    }
+    return hf;
   }
 }
