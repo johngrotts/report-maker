@@ -5,6 +5,7 @@ import { ExcelCellContent, ExcelMergeCells } from '../models/excel-data-content'
 import { TextUtilService } from '../../../common/utils/text-util.service';
 import { ExcelColumnProperty, ExcelContentFormatter, ExcelFootFormatter, ExcelFormatter, ExcelHeadFormatter, ExcelIndividualFormulaCell, ExcelSheetFormatter, ExcelTableHeaderDataFormatter, ExcelWorksheetFormatter } from '../models/excel-formatter';
 import { ValidationUtilsService } from '../../../common/utils/validation-utils.service';
+import { ObjectDuplicatorService } from '../../../common/services/object-duplicator.service';
 
 
 @Injectable({
@@ -27,6 +28,30 @@ export class ExcelReaderService {
         return this.readBasicDataFromExcelFile(data);
       }
     });
+  }
+  
+  public static async readXLSXData(
+    filePath: string, templateProperties: ExcelTemplateReaderProperties): Promise<ExcelFormatter> {
+      
+    return (await fetch(filePath)).arrayBuffer().then(data => {
+      return this.readXLSXDataOnly(data, templateProperties);
+    });
+  }
+
+
+  protected static readXLSXDataOnly(data: any, templateProperties: ExcelTemplateReaderProperties): any {
+    const excelFormatter = new ExcelFormatter();
+    const workbook = new ExcelJS.Workbook();
+    const promise = workbook.xlsx.load(data).then(wb => {
+      console.log('WORKBOOK: ', wb)
+      const ws = wb.worksheets[0] as any;
+      console.log('EQUAL?: ', wb === ws['_workbook'])
+      const thing = ObjectDuplicatorService.decycleJson(wb);
+      ObjectDuplicatorService.printKeys(thing, 0);
+      console.log('OBJ MAKER: ', thing)
+      return thing;
+    });
+    return promise;
   }
 
   protected static async loadExcelFile(fileLocation: string, fileName: string): Promise<File> {
@@ -51,121 +76,125 @@ export class ExcelReaderService {
     const excelFormatter = new ExcelFormatter();
     const workbook = new ExcelJS.Workbook();
     const promise = workbook.xlsx.load(data).then(wb => {
-        excelFormatter.sheetFormatters = [];
-        wb.eachSheet((sheet, id) => {
-          const so = sheet as any;
-  
-          // Worksheet Properties
-          const sp = new ExcelWorksheetFormatter();
-          sp.sheetName = so['name'];
-          sp.headerFooter = so.headerFooter;
-  
-          // Column Properties
-          const cp: ExcelColumnProperty[] = [];
-          so.columns.forEach((c: any, i: number) => {
-            const col = new ExcelColumnProperty();
-            col.column = i + 1;
-            col.width = c.width;
-            col.styles = c.style;
-            cp.push(col);
-          });
-  
-          // Sheet Properties
-          const sf = new ExcelSheetFormatter();
-          sf.styles = so['pageSetup'];
-          sf.columnProperties = cp;
-  
-          // Cell Merges
-          const merges = so['_merges'];
-          const cellMerges: ExcelTemplateReaderCellMerge[] = [];
-          Object.keys(merges).forEach((m: any) => {
-            let col = m.replace(/[^a-z]/gi, '');
-            let row = m.replace(/\D/g, '');
-            cellMerges.push({ cell: m, col: col, row: row, model: merges[m].model });
-          });
-          cellMerges.sort((a, b) => {
-            const cellA = `${a.col}${TextUtilService.customPad(a.row, 4)}`;
-            const cellB = `${b.col}${TextUtilService.customPad(b.row, 4)}`;
-            if(cellA < cellB) {
-              return -1;
-            }
-            if(cellA > cellB) {
-              return 1;
-            }
-            return 0;
-          });
+      console.log('WORKBOOK: ', wb)
+      const ws = wb.worksheets[0] as any;
+      console.log('EQUAL?: ', wb === ws['_workbook'])
+      console.log('OBJ MAKER: ', ObjectDuplicatorService.decycleJson(wb))
+      excelFormatter.sheetFormatters = [];
+      wb.eachSheet((sheet, id) => {
+        const so = sheet as any;
 
-          // Initial Setup
-          const trp: ExcelRangeTemplateReaderProperties = templateProperties;
-          if(trp.sheetHeadStartRow && trp.sheetHeadEndRow) {
-            trp.headRange = trp.sheetHeadEndRow - trp.sheetHeadStartRow + 1;
-          } else {
-            trp.headRange = 0;
-            trp.sheetHeadStartRow = trp.sheetHeadStartRow ? trp.sheetHeadStartRow : 0;
-            trp.sheetHeadEndRow = trp.sheetHeadEndRow ? trp.sheetHeadEndRow : 0;
-          }
-          if(trp.tableHeaderStartRow && trp.tableHeaderEndRow) {
-            trp.tableHeadRange = trp.tableHeaderEndRow - trp.tableHeaderStartRow + 1;
-          } else {
-            trp.tableHeadRange = 0;
-            trp.tableHeaderStartRow = trp.tableHeaderStartRow ? trp.tableHeaderStartRow : 0;
-            trp.tableHeaderEndRow = trp.tableHeaderEndRow ? trp.tableHeaderEndRow : 0;
-          }
-          trp.tableDataStartRow = trp.tableDataStartRow ? trp.tableDataStartRow : 0;
-          if(trp.sheetFootStartRow && trp.sheetFootEndRow) {
-            trp.footRange = trp.sheetFootEndRow - trp.sheetFootStartRow + 1;
-          } else {
-            trp.footRange = 0;
-            trp.sheetFootStartRow = trp.sheetFootStartRow ? trp.sheetFootStartRow : 0;
-            trp.sheetFootEndRow = trp.sheetFootEndRow ? trp.sheetFootEndRow : 0;
-          }
-          const individualFormulaCells: any[] = [];
-  
-          // Sheet Head Data
-          sp.headFormatter = this.createSheetHeadFormatter(trp, so, cellMerges);
-  
-          // Table Headers and Data
-          const cf = new ExcelContentFormatter();
-          const had: ExcelTableHeaderDataFormatter[] = [];
-          if(trp.tableHeadRange > 0 && trp.tableDataStartRow > 0) {
-            cf.headerStartingRow = trp.tableHeaderStartRow;
-            cf.dataStartingRow = trp.tableDataStartRow;
-            for(let i = trp.tableHeaderStartRow; i <= trp.tableHeaderEndRow; i++) {
-              so.getRow(i)._cells.forEach((c: any) => {
-                const thd = new ExcelTableHeaderDataFormatter();
-                thd.headerTitle = c._value.model.value;
-                thd.headerStyles = c._value.model.style;
-                thd.column = c._value.model.address.replace(/[^a-z]/gi, '');
-                const dc = so.getCell(`${thd.column}${trp.tableDataStartRow}`);
-                if(dc._value.model.value) {
-                  thd.dataKey = dc._value.model.value;
-                } else if(ValidationUtilsService.doesExist(dc._value.model.formula)) {
-                  thd.dataKey = `=${dc._value.model.formula}`;
-                }
-                thd.dataCellType = dc._value.model.type;
-                thd.dataStyles = dc._value.model.style;
-                had.push(thd);
-              });
-            }
-            cf.tableHeaderData = had;
-            sp.contentFormatter = cf;
-          }
-  
-          // Sheet Foot
-          sp.footFormatter = this.createSheetFootFormatter(trp, so, cellMerges);
-  
-          // Individual Formulas
-          console.log('IFC: ', this.individualFormulaCells)
-          sp.individualFormulaCells = this.createIndividualFormulaCells();
-  
-          // Conditional Formatting
-          sp.conditionalFormats = so['conditionalFormattings'];
-          
-          excelFormatter.sheetFormatters.push(sp);
+        // Worksheet Properties
+        const sp = new ExcelWorksheetFormatter();
+        sp.sheetName = so['name'];
+        sp.headerFooter = so.headerFooter;
+
+        // Column Properties
+        const cp: ExcelColumnProperty[] = [];
+        so.columns.forEach((c: any, i: number) => {
+          const col = new ExcelColumnProperty();
+          col.column = i + 1;
+          col.width = c.width;
+          col.styles = c.style;
+          cp.push(col);
         });
-        console.log('READING XLSX', excelFormatter)
-        return excelFormatter;
+
+        // Sheet Properties
+        const sf = new ExcelSheetFormatter();
+        sf.styles = so['pageSetup'];
+        sf.columnProperties = cp;
+
+        // Cell Merges
+        const merges = so['_merges'];
+        const cellMerges: ExcelTemplateReaderCellMerge[] = [];
+        Object.keys(merges).forEach((m: any) => {
+          let col = m.replace(/[^a-z]/gi, '');
+          let row = m.replace(/\D/g, '');
+          cellMerges.push({ cell: m, col: col, row: row, model: merges[m].model });
+        });
+        cellMerges.sort((a, b) => {
+          const cellA = `${a.col}${TextUtilService.customPad(a.row, 4)}`;
+          const cellB = `${b.col}${TextUtilService.customPad(b.row, 4)}`;
+          if(cellA < cellB) {
+            return -1;
+          }
+          if(cellA > cellB) {
+            return 1;
+          }
+          return 0;
+        });
+
+        // Initial Setup
+        const trp: ExcelRangeTemplateReaderProperties = templateProperties;
+        if(trp.sheetHeadStartRow && trp.sheetHeadEndRow) {
+          trp.headRange = trp.sheetHeadEndRow - trp.sheetHeadStartRow + 1;
+        } else {
+          trp.headRange = 0;
+          trp.sheetHeadStartRow = trp.sheetHeadStartRow ? trp.sheetHeadStartRow : 0;
+          trp.sheetHeadEndRow = trp.sheetHeadEndRow ? trp.sheetHeadEndRow : 0;
+        }
+        if(trp.tableHeaderStartRow && trp.tableHeaderEndRow) {
+          trp.tableHeadRange = trp.tableHeaderEndRow - trp.tableHeaderStartRow + 1;
+        } else {
+          trp.tableHeadRange = 0;
+          trp.tableHeaderStartRow = trp.tableHeaderStartRow ? trp.tableHeaderStartRow : 0;
+          trp.tableHeaderEndRow = trp.tableHeaderEndRow ? trp.tableHeaderEndRow : 0;
+        }
+        trp.tableDataStartRow = trp.tableDataStartRow ? trp.tableDataStartRow : 0;
+        if(trp.sheetFootStartRow && trp.sheetFootEndRow) {
+          trp.footRange = trp.sheetFootEndRow - trp.sheetFootStartRow + 1;
+        } else {
+          trp.footRange = 0;
+          trp.sheetFootStartRow = trp.sheetFootStartRow ? trp.sheetFootStartRow : 0;
+          trp.sheetFootEndRow = trp.sheetFootEndRow ? trp.sheetFootEndRow : 0;
+        }
+        const individualFormulaCells: any[] = [];
+
+        // Sheet Head Data
+        sp.headFormatter = this.createSheetHeadFormatter(trp, so, cellMerges);
+
+        // Table Headers and Data
+        const cf = new ExcelContentFormatter();
+        const had: ExcelTableHeaderDataFormatter[] = [];
+        if(trp.tableHeadRange > 0 && trp.tableDataStartRow > 0) {
+          cf.headerStartingRow = trp.tableHeaderStartRow;
+          cf.dataStartingRow = trp.tableDataStartRow;
+          for(let i = trp.tableHeaderStartRow; i <= trp.tableHeaderEndRow; i++) {
+            so.getRow(i)._cells.forEach((c: any) => {
+              const thd = new ExcelTableHeaderDataFormatter();
+              thd.headerTitle = c._value.model.value;
+              thd.headerStyles = c._value.model.style;
+              thd.column = c._value.model.address.replace(/[^a-z]/gi, '');
+              const dc = so.getCell(`${thd.column}${trp.tableDataStartRow}`);
+              if(dc._value.model.value) {
+                thd.dataKey = dc._value.model.value;
+              } else if(ValidationUtilsService.doesExist(dc._value.model.formula)) {
+                thd.dataKey = `=${dc._value.model.formula}`;
+              }
+              thd.dataCellType = dc._value.model.type;
+              thd.dataStyles = dc._value.model.style;
+              had.push(thd);
+            });
+          }
+          cf.tableHeaderData = had;
+          sp.contentFormatter = cf;
+        }
+
+        // Sheet Foot
+        sp.footFormatter = this.createSheetFootFormatter(trp, so, cellMerges);
+
+        // Individual Formulas
+        console.log('IFC: ', this.individualFormulaCells)
+        sp.individualFormulaCells = this.createIndividualFormulaCells();
+
+        // Conditional Formatting
+        sp.conditionalFormats = so['conditionalFormattings'];
+        
+        excelFormatter.sheetFormatters.push(sp);
       });
+      console.log('READING XLSX', excelFormatter)
+      return excelFormatter;
+    });
     return promise;
   }
 
