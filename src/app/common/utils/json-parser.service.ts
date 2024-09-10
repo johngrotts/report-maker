@@ -66,7 +66,7 @@ export class JsonParserService {
         display = `${display}${this.createObject(json[j], j, currentIndent, pp, isLast0, insideArray)}`;
   
       // BASIC VALUE
-      } else if(json[j] === null || this.isNumber(json[j]) || this.isBoolean(json[j]) || this.isString(json[j])) {
+      } else if(json[j] === null || json[j] === undefined || this.isNumber(json[j]) || this.isBoolean(json[j]) || this.isString(json[j])) {
         // console.log('BASIC VALUE', json[j], insideArray);
         const key = insideArray ? '' : `${this.createKey(j)}`;
         const value = `${this.createBasicValue(json[j])}${this.addCommaUnlessLast(isLast0)}${pp.lineBreak}`;
@@ -123,6 +123,8 @@ export class JsonParserService {
     let val = '';
     if(value === null) {
       val = 'null';
+    } else if(value === undefined) {
+      val = 'undefined';
     } else if(this.isNumber(value) || this.isBoolean(value) || this.isBoolean(value)) {
       val = value;
     } else if(this.isString(value)) {

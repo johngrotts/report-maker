@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { ExcelReaderService } from '../../report-maker/excel/services/excel-reader.service';
 import { ExcelTemplateReaderProperties } from '../../report-maker/excel/models/excel-template-reader-properties';
 import { JsonParserService, PrettifiedJsonParams } from '../../common/utils/json-parser.service';
+import { JsonObjectManagementService } from '../../common/services/json-object-management.service';
 
 @Component({
   selector: 'app-ui-test',
@@ -50,13 +51,20 @@ export class UiTestComponent {
     const ef = ExcelReaderService.readXLSXData(
       'http://localhost:4200/assets/basic-excel-test-1.xlsx', tp
     ).then(res => {
-      this.htmlToDisplay = JsonParserService.parseAndPrettifyJson(JSON.parse(JSON.stringify(res)), pp);
+      const decycled = JsonObjectManagementService.decycleJson(res, 15);
+      this.htmlToDisplay = JsonObjectManagementService.createTSObjectsFromJson(decycled, 'main', '');
+      console.log('RES -----------', this.htmlToDisplay)
     }).catch(e => {
       console.log('ERROR IN PARSING XLSX: ', e);
     });
   }
 
+  public createTSObject() {
+    
+  }
+
   public createXLSX() {
     
   }
+
 }

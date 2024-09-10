@@ -5,7 +5,7 @@ import { ExcelCellContent, ExcelMergeCells } from '../models/excel-data-content'
 import { TextUtilService } from '../../../common/utils/text-util.service';
 import { ExcelColumnProperty, ExcelContentFormatter, ExcelFootFormatter, ExcelFormatter, ExcelHeadFormatter, ExcelIndividualFormulaCell, ExcelSheetFormatter, ExcelTableHeaderDataFormatter, ExcelWorksheetFormatter } from '../models/excel-formatter';
 import { ValidationUtilsService } from '../../../common/utils/validation-utils.service';
-import { ObjectDuplicatorService } from '../../../common/services/object-duplicator.service';
+import { JsonObjectManagementService } from '../../../common/services/json-object-management.service';
 
 
 @Injectable({
@@ -46,8 +46,8 @@ export class ExcelReaderService {
       console.log('WORKBOOK: ', wb)
       const ws = wb.worksheets[0] as any;
       console.log('EQUAL?: ', wb === ws['_workbook'])
-      const thing = ObjectDuplicatorService.decycleJson(wb);
-      ObjectDuplicatorService.printKeys(thing, 0);
+      const thing = JsonObjectManagementService.decycleJson(wb);
+      JsonObjectManagementService.printKeys(thing, 0);
       console.log('OBJ MAKER: ', thing)
       return thing;
     });
@@ -79,7 +79,7 @@ export class ExcelReaderService {
       console.log('WORKBOOK: ', wb)
       const ws = wb.worksheets[0] as any;
       console.log('EQUAL?: ', wb === ws['_workbook'])
-      console.log('OBJ MAKER: ', ObjectDuplicatorService.decycleJson(wb))
+      console.log('OBJ MAKER: ', JsonObjectManagementService.decycleJson(wb))
       excelFormatter.sheetFormatters = [];
       wb.eachSheet((sheet, id) => {
         const so = sheet as any;
